@@ -62,6 +62,10 @@ async function run() {
             res.send(result);
         })
 
+        app.get('/clubs', async(req,res)=>{
+            const clubs = await clubCollection.find().toArray();
+            res.send(clubs);
+        })
 
 
 
