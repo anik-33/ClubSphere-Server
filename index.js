@@ -96,6 +96,12 @@ async function run() {
             const result = await userCollection.updateOne(query, updatedDoc)
             res.send(result);
         })
+        app.get('/clubs/:id', async(req,res)=>{
+            const {id} = req.params;
+            const query = {_id: new ObjectId(id)}
+            const result = await clubCollection.findOne(query);
+            res.send(result);
+        })
 
         // new create club info store apis
         app.post('/clubs', async (req, res) => {
