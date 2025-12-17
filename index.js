@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const cors = require('cors');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const port = 3000
 // middleware
@@ -32,10 +32,42 @@ async function run() {
         const userCollection = db.collection('users');
         const clubCollection = db.collection('clubs');
 
+        // users info get apis
+        app.get('/users', async (req, res) => {
+            const result = await userCollection.find().toArray();
+            res.send(result);
+        })
 
 
 
-// users info store apis
+        app.get('/users', async (req, res) => {
+            const searchText = req.query.searchText;
+            const query = {};
+
+            if (searchText) {
+                // query.displayName = {$regex: searchText, $options: 'i'}
+
+                query.$or = [
+                    { displayName: { $regex: searchText, $options: 'i' } },
+                    { email: { $regex: searchText, $options: 'i' } },
+                ]
+
+            }
+
+            const cursor = userCollection.find(query).sort({ createdAt: -1 }).limit(3);
+            const result = await cursor.toArray();
+            res.send(result);
+        });
+
+         app.get('/users/:email/role', async (req, res) => {
+            const email = req.params.email;
+            const query = { email }
+            const user = await userCollection.findOne(query);
+            res.send({ role: user?.role || 'user' })
+        })
+
+
+        // users info store apis
         app.post('/users', async (req, res) => {
             const user = req.body;
             user.role = 'user';
@@ -51,18 +83,32 @@ async function run() {
             res.send(result);
         })
 
+        // users patch api for update role
+        app.patch('/users/:id/role', async (req, res) => {
+            const id = req.params.id;
+            const roleInfo = req.body;
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    role: roleInfo.role
+                }
+            }
+            const result = await userCollection.updateOne(query, updatedDoc)
+            res.send(result);
+        })
+
         // new create club info store apis
         app.post('/clubs', async (req, res) => {
             const club = req.body;
             club.status = 'pending';
             club.createdAt = new Date();
             club.updatedAt = new Date();
-        
+
             const result = await clubCollection.insertOne(club);
             res.send(result);
         })
 
-        app.get('/clubs', async(req,res)=>{
+        app.get('/clubs', async (req, res) => {
             const clubs = await clubCollection.find().toArray();
             res.send(clubs);
         })
