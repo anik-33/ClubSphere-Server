@@ -31,6 +31,7 @@ async function run() {
         const db = client.db('ClubSphere');
         const userCollection = db.collection('users');
         const clubCollection = db.collection('clubs');
+        const eventCollection = db.collection('events');
 
         // users info get apis
         app.get('/users', async (req, res) => {
@@ -59,7 +60,7 @@ async function run() {
             res.send(result);
         });
 
-         app.get('/users/:email/role', async (req, res) => {
+        app.get('/users/:email/role', async (req, res) => {
             const email = req.params.email;
             const query = { email }
             const user = await userCollection.findOne(query);
@@ -96,9 +97,9 @@ async function run() {
             const result = await userCollection.updateOne(query, updatedDoc)
             res.send(result);
         })
-        app.get('/clubs/:id', async(req,res)=>{
-            const {id} = req.params;
-            const query = {_id: new ObjectId(id)}
+        app.get('/clubs/:id', async (req, res) => {
+            const { id } = req.params;
+            const query = { _id: new ObjectId(id) }
             const result = await clubCollection.findOne(query);
             res.send(result);
         })
@@ -119,6 +120,32 @@ async function run() {
             res.send(clubs);
         })
 
+        app.get('/clubs/:email/manager', async (req, res) => {
+            try {
+                const email = req.params.email;
+
+                if (!email) {
+                    return res.status(400).send({ message: 'Email is required' });
+                }
+
+                const query = { managerEmail: email };
+                const result = await clubCollection.find(query).toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Server error', error });
+            }
+        });
+
+        // event apis
+         app.post('/events', async (req, res) => {
+            const event = req.body;
+            event.status = 'pending';
+            event.createdAt = new Date();
+            event.updatedAt = new Date();
+            const result = await eventCollection.insertOne(event);
+            res.send(result);
+        })
 
 
 
