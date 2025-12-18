@@ -32,6 +32,8 @@ async function run() {
         const userCollection = db.collection('users');
         const clubCollection = db.collection('clubs');
         const eventCollection = db.collection('events');
+        const clubMemberCollection = db.collection('clubMembers');
+        const eventRegistrationsCollection = db.collection('eventRegistrations')
 
         // users info get apis
         app.get('/users', async (req, res) => {
@@ -115,10 +117,25 @@ async function run() {
             res.send(result);
         })
 
+
+
         app.get('/clubs', async (req, res) => {
             const clubs = await clubCollection.find().toArray();
             res.send(clubs);
         })
+
+        // get club by sorting approved and latest 
+        app.get('/approved/clubs', async (req, res) => {
+            const query = { status: 'approved' };
+
+            const clubs = await clubCollection
+                .find(query)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(clubs);
+        });
+
 
         app.get('/clubs/:email/manager', async (req, res) => {
             try {
@@ -137,8 +154,51 @@ async function run() {
             }
         });
 
+        app.patch('/clubs/:id/status', async (req, res) => {
+            const id = req.params.id;
+            const updateStatus = req.body;
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: updateStatus.status
+                }
+            }
+            const result = await clubCollection.updateOne(query, updatedDoc)
+            res.send(result);
+        })
+
+        // club member apis
+        app.post('/booking/clubs', async (req, res) => {
+            const clubMember = req.body;
+            const result = await clubMemberCollection.insertOne(clubMember);
+            res.send(result);
+        })
+
+        app.get('/booking/clubs', async (req, res) => {
+            const result = await clubMemberCollection.find().toArray();
+            res.send(result);
+        })
+
+        app.get('/clubs/:email/myclub', async (req, res) => {
+            try {
+                const email = req.params.email;
+                console.log('PARAM EMAIL:', req.params.email);
+
+                if (!email) {
+                    return res.status(400).send({ message: 'Email is required' });
+                }
+
+                const query = { useremail: email };
+                const result = await clubMemberCollection.find(query).toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Server error', error });
+            }
+        });
+
         // event apis
-         app.post('/events', async (req, res) => {
+        app.post('/events', async (req, res) => {
             const event = req.body;
             event.status = 'pending';
             event.createdAt = new Date();
@@ -146,6 +206,32 @@ async function run() {
             const result = await eventCollection.insertOne(event);
             res.send(result);
         })
+
+
+        app.get('/events', async (req, res) => {
+            const events = await eventCollection.find().toArray();
+            res.send(events);
+        })
+
+        app.get('/events/:id', async (req, res) => {
+            const { id } = req.params;
+            const query = { _id: new ObjectId(id) }
+            const result = await eventCollection.findOne(query);
+            res.send(result);
+        })
+
+        // event registration apis
+        app.post('/event/registrations', async (req, res) => {
+            const eventRegistration = req.body;
+            const result = await eventRegistrationsCollection.insertOne(eventRegistration);
+            res.send(result);
+        })
+
+        app.get('/event/registrations', async (req, res) => {
+            const result = await eventRegistrationsCollection.find().toArray();
+            res.send(result);
+        })
+
 
 
 
