@@ -167,7 +167,7 @@ async function run() {
             res.send(result);
         })
 
-        // club member apis
+        // club member apis who have joined club
         app.post('/booking/clubs', async (req, res) => {
             const clubMember = req.body;
             const result = await clubMemberCollection.insertOne(clubMember);
@@ -182,7 +182,7 @@ async function run() {
         app.get('/clubs/:email/myclub', async (req, res) => {
             try {
                 const email = req.params.email;
-                console.log('PARAM EMAIL:', req.params.email);
+                // console.log('PARAM EMAIL:', req.params.email);
 
                 if (!email) {
                     return res.status(400).send({ message: 'Email is required' });
@@ -197,6 +197,18 @@ async function run() {
             }
         });
 
+        app.patch('/club-member/:id/status',async(req,res)=>{
+            const id = req.params.id;
+            const updateStatus = req.body;
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: updateStatus.status
+                }
+            }
+            const result = await clubMemberCollection.updateOne(query, updatedDoc)
+            res.send(result);
+        })
         // event apis
         app.post('/events', async (req, res) => {
             const event = req.body;
@@ -232,7 +244,23 @@ async function run() {
             res.send(result);
         })
 
+            app.get('/events/:email/myevents', async (req, res) => {
+            try {
+                const email = req.params.email;
+                // console.log('PARAM EMAIL:', req.params.email);
 
+                if (!email) {
+                    return res.status(400).send({ message: 'Email is required' });
+                }
+
+                const query = { userEmail: email };
+                const result = await eventRegistrationsCollection.find(query).toArray();
+
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Server error', error });
+            }
+        });
 
 
         // Send a ping to confirm a successful connection
