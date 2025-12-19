@@ -196,8 +196,8 @@ async function run() {
                 res.status(500).send({ message: 'Server error', error });
             }
         });
-
-        app.patch('/club-member/:id/status',async(req,res)=>{
+        // only admin can approve or reject status
+        app.patch('/club-member/:id/status', async (req, res) => {
             const id = req.params.id;
             const updateStatus = req.body;
             const query = { _id: new ObjectId(id) }
@@ -232,6 +232,8 @@ async function run() {
             res.send(result);
         })
 
+
+
         // event registration apis
         app.post('/event/registrations', async (req, res) => {
             const eventRegistration = req.body;
@@ -244,7 +246,7 @@ async function run() {
             res.send(result);
         })
 
-            app.get('/events/:email/myevents', async (req, res) => {
+        app.get('/events/:email/myevents', async (req, res) => {
             try {
                 const email = req.params.email;
                 // console.log('PARAM EMAIL:', req.params.email);
@@ -261,6 +263,20 @@ async function run() {
                 res.status(500).send({ message: 'Server error', error });
             }
         });
+
+        // event registration status update by admin
+        app.patch('/event/registered/:id/status', async(req,res)=>{
+            const id = req.params.id;
+            const updateStatus = req.body;
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: updateStatus.status
+                }
+            }
+            const result = await eventRegistrationsCollection.updateOne(query, updatedDoc)
+            res.send(result);
+        })
 
 
         // Send a ping to confirm a successful connection
