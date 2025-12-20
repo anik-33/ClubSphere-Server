@@ -4,11 +4,42 @@ const cors = require('cors');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 require('dotenv').config();
 const port = 3000
+
+const admin = require("firebase-admin");
+
+const serviceAccount = require("./clubsphere-e30c7-firebase-adminsdk.json");
+
+admin.initializeApp({
+    credential: admin.credential.cert(serviceAccount)
+});
+
+
+
 // middleware
 app.use(cors());
 app.use(express.json());
-// GyiOfv0bx60equGD
-// ClubSphere
+
+const verifyFBToken = async (req, res, next) => {
+    const token = req.headers.authorization;
+
+    if (!token) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+    try {
+        const idToken = token.split(' ')[1];
+        const decoded = await admin.auth().verifyIdToken(idToken);
+        console.log('decoded in the token', decoded);
+        req.decoded_email = decoded.email;
+        next();
+    }
+    catch (err) {
+        return res.status(401).send({ message: 'unauthorized access' })
+    }
+
+
+}
+
 
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.cjfssbu.mongodb.net/?appName=Cluster0`;
 
@@ -35,15 +66,37 @@ async function run() {
         const clubMemberCollection = db.collection('clubMembers');
         const eventRegistrationsCollection = db.collection('eventRegistrations')
 
+
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.decoded_email;
+            const query = { email };
+            const user = await userCollection.findOne(query);
+
+            if (!user || user.role !== 'admin') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+
+            next();
+        }
+        const verifyManager = async (req, res, next) => {
+            const email = req.decoded_email;
+            const query = { email };
+            const user = await userCollection.findOne(query);
+
+            if (!user || user.role !== 'manager') {
+                return res.status(403).send({ message: 'forbidden access' });
+            }
+
+            next();
+        }
+
         // users info get apis
-        app.get('/users', async (req, res) => {
-            const result = await userCollection.find().toArray();
-            res.send(result);
-        })
+        // app.get('/users', async (req, res) => {
+        //     const result = await userCollection.find().toArray();
+        //     res.send(result);
+        // })
 
-
-
-        app.get('/users', async (req, res) => {
+        app.get('/users', verifyFBToken,verifyAdmin, async (req, res) => {
             const searchText = req.query.searchText;
             const query = {};
 
@@ -62,7 +115,7 @@ async function run() {
             res.send(result);
         });
 
-        app.get('/users/:email/role', async (req, res) => {
+        app.get('/users/:email/role', verifyFBToken, async (req, res) => {
             const email = req.params.email;
             const query = { email }
             const user = await userCollection.findOne(query);
@@ -87,7 +140,7 @@ async function run() {
         })
 
         // users patch api for update role
-        app.patch('/users/:id/role', async (req, res) => {
+        app.patch('/users/:id/role',verifyFBToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const roleInfo = req.body;
             const query = { _id: new ObjectId(id) }
@@ -99,6 +152,8 @@ async function run() {
             const result = await userCollection.updateOne(query, updatedDoc)
             res.send(result);
         })
+
+        // get single club info
         app.get('/clubs/:id', async (req, res) => {
             const { id } = req.params;
             const query = { _id: new ObjectId(id) }
@@ -106,8 +161,8 @@ async function run() {
             res.send(result);
         })
 
-        // new create club info store apis
-        app.post('/clubs', async (req, res) => {
+        // new club create by manager  info store apis
+        app.post('/clubs',verifyFBToken,verifyManager, async (req, res) => {
             const club = req.body;
             club.status = 'pending';
             club.createdAt = new Date();
@@ -119,7 +174,7 @@ async function run() {
 
 
 
-        app.get('/clubs', async (req, res) => {
+        app.get('/clubs',verifyFBToken,verifyAdmin, async (req, res) => {
             const clubs = await clubCollection.find().toArray();
             res.send(clubs);
         })
@@ -135,9 +190,20 @@ async function run() {
 
             res.send(clubs);
         });
+        // get club by sorting pending and latest for admin dashboard
+        app.get('/pending/clubs', async (req, res) => {
+            const query = { status: 'pending' };
+
+            const clubs = await clubCollection
+                .find(query)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(clubs);
+        });
 
 
-        app.get('/clubs/:email/manager', async (req, res) => {
+        app.get('/clubs/:email/manager',verifyFBToken,verifyManager, async (req, res) => {
             try {
                 const email = req.params.email;
 
@@ -146,7 +212,10 @@ async function run() {
                 }
 
                 const query = { managerEmail: email };
-                const result = await clubCollection.find(query).toArray();
+                const result = await clubCollection
+                    .find(query)
+                    .sort({ createdAt: -1 })
+                    .toArray();
 
                 res.send(result);
             } catch (error) {
@@ -154,7 +223,7 @@ async function run() {
             }
         });
 
-        app.patch('/clubs/:id/status', async (req, res) => {
+        app.patch('/clubs/:id/status',verifyFBToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const updateStatus = req.body;
             const query = { _id: new ObjectId(id) }
@@ -168,18 +237,47 @@ async function run() {
         })
 
         // club member apis who have joined club
-        app.post('/booking/clubs', async (req, res) => {
+        app.post('/booking/clubs',verifyFBToken, async (req, res) => {
             const clubMember = req.body;
+            // //  already booked check
+            // const alreadyJoined = await clubMemberCollection.findOne({
+
+            //     clubId:clubMember.clubId
+            // });
+
+            // if (alreadyJoined) {
+            //     return res.status(400).send({
+            //         message: 'You have already booked this event',
+
+            //     });
+
+            // }
+
             const result = await clubMemberCollection.insertOne(clubMember);
             res.send(result);
         })
-
+        // admin dashboard get all club members collection
         app.get('/booking/clubs', async (req, res) => {
             const result = await clubMemberCollection.find().toArray();
             res.send(result);
         })
+        // get club join members request by sorting pending and latest for admin dashboard
+        app.get('/club/pending-members',verifyFBToken, async (req, res) => {
+            const query = { status: 'pending' };
 
-        app.get('/clubs/:email/myclub', async (req, res) => {
+            const clubs = await clubMemberCollection
+                .find(query)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(clubs);
+        });
+
+
+
+
+
+        app.get('/clubs/:email/myclub',verifyFBToken, async (req, res) => {
             try {
                 const email = req.params.email;
                 // console.log('PARAM EMAIL:', req.params.email);
@@ -197,7 +295,7 @@ async function run() {
             }
         });
         // only admin can approve or reject status
-        app.patch('/club-member/:id/status', async (req, res) => {
+        app.patch('/club-member/:id/status',verifyFBToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const updateStatus = req.body;
             const query = { _id: new ObjectId(id) }
@@ -210,7 +308,7 @@ async function run() {
             res.send(result);
         })
         // event apis
-        app.post('/events', async (req, res) => {
+        app.post('/events',verifyFBToken,verifyManager, async (req, res) => {
             const event = req.body;
             event.status = 'pending';
             event.createdAt = new Date();
@@ -219,10 +317,80 @@ async function run() {
             res.send(result);
         })
 
-
-        app.get('/events', async (req, res) => {
+        // get all event by admin
+        app.get('/events',verifyFBToken,verifyAdmin, async (req, res) => {
             const events = await eventCollection.find().toArray();
             res.send(events);
+        })
+
+        app.get('/events/:email/manager',verifyFBToken,verifyManager, async (req, res) => {
+            try {
+                const email = req.params.email;
+                if (!email) {
+                    return res.status(400).send({ message: 'Email is required' });
+                }
+                const query = { managerEmail: email };
+                const result = await eventCollection
+                    .find(query)
+                    .sort({ createdAt: -1 })
+                    .toArray();
+                res.send(result);
+            } catch (error) {
+                res.status(500).send({ message: 'Server error', error });
+            }
+        });
+
+
+        // get approved and latest events for homepage
+        app.get('/events/approved', async (req, res) => {
+            const query = { status: 'approved' };
+
+            const clubs = await eventCollection
+                .find(query)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(clubs);
+        });
+        // get pending and latest events for admin Dashboard
+        app.get('/events/pending',verifyFBToken,verifyAdmin, async (req, res) => {
+            const query = { status: 'pending' };
+
+            const clubs = await eventCollection
+                .find(query)
+                .sort({ createdAt: -1 })
+                .toArray();
+
+            res.send(clubs);
+        });
+
+        app.patch('/events/:id/status',verifyFBToken,verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const updateStatus = req.body;
+
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    status: updateStatus.status
+                }
+            }
+            const result = await eventCollection.updateOne(query, updatedDoc)
+            res.send(result);
+        })
+
+        app.put('/events/:id',verifyFBToken,verifyAdmin, async (req, res) => {
+            const id = req.params.id;
+            const userInfo = req.body;
+
+            const query = { _id: new ObjectId(id) }
+            const updatedDoc = {
+                $set: {
+                    ...userInfo,
+                    updatedAt: new Date()
+                }
+            }
+            const result = await eventCollection.updateOne(query, updatedDoc)
+            res.send(result);
         })
 
         app.get('/events/:id', async (req, res) => {
@@ -235,18 +403,19 @@ async function run() {
 
 
         // event registration apis
-        app.post('/event/registrations', async (req, res) => {
+        app.post('/event/registrations',verifyFBToken, async (req, res) => {
             const eventRegistration = req.body;
+
             const result = await eventRegistrationsCollection.insertOne(eventRegistration);
             res.send(result);
         })
 
-        app.get('/event/registrations', async (req, res) => {
+        app.get('/event/registrations',verifyFBToken,verifyAdmin, async (req, res) => {
             const result = await eventRegistrationsCollection.find().toArray();
             res.send(result);
         })
 
-        app.get('/events/:email/myevents', async (req, res) => {
+        app.get('/events/:email/myevents',verifyFBToken, async (req, res) => {
             try {
                 const email = req.params.email;
                 // console.log('PARAM EMAIL:', req.params.email);
@@ -265,7 +434,7 @@ async function run() {
         });
 
         // event registration status update by admin
-        app.patch('/event/registered/:id/status', async(req,res)=>{
+        app.patch('/event/registered/:id/status',verifyFBToken,verifyAdmin, async (req, res) => {
             const id = req.params.id;
             const updateStatus = req.body;
             const query = { _id: new ObjectId(id) }
